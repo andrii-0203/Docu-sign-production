@@ -44,9 +44,6 @@ const Dashboard = () => {
     }, [socket, fetchDocuments]);
 
     const getEffectiveStatus = (doc) => {
-        if (doc.status === 'Rejected' && (!doc.invitations || doc.invitations.length === 0)) {
-            return 'Pending';
-        }
         return doc.status;
     };
 

@@ -5,6 +5,7 @@ const { logAction } = require('./auditController');
 const { sendInvitationEmail } = require('../utils/email');
 const cloudinary = require('../utils/cloudinary');
 const streamifier = require('streamifier');
+const { emitDocumentUpdate } = require('../socket');
 
 exports.uploadDocument = async (req, res) => {
     // Check if Cloudinary is configured
@@ -378,6 +379,8 @@ exports.inviteGuest = async (req, res) => {
             });
         }
 
+        emitDocumentUpdate(id, { type: 'INVITATION_SENT', invitation });
+
         res.status(201).json({ 
             message: 'Invitation sent successfully', 
             status: 'success',
@@ -432,6 +435,8 @@ exports.deleteInvitation = async (req, res) => {
         }
 
         await logAction(doc._id, 'REVOKE', req, `Revoked invitation for ${invitation.name} (${invitation.email})`);
+        
+        emitDocumentUpdate(doc._id, { type: 'INVITATION_REVOKED' });
 
         res.json({ message: 'Invitation revoked successfully' });
     } catch (error) {
@@ -467,6 +472,9 @@ exports.rejectDocument = async (req, res) => {
         }
 
         await logAction(doc._id, 'REJECT', req, 'Document rejected', signerEmail);
+        
+        emitDocumentUpdate(doc._id, { type: 'DOCUMENT_REJECTED', status: 'Rejected' });
+
         res.json(doc);
     } catch (error) {
         console.error('Reject Document Error:', error);

@@ -165,6 +165,7 @@ exports.updateSignature = async (req, res) => {
         }
         
         await signature.save();
+        emitDocumentUpdate(signature.document._id, { type: 'SIGNATURE_UPDATED', signatureId: signature._id });
         res.json(signature);
     } catch (error) {
         console.error('Update Signature Error:', error);
@@ -202,6 +203,7 @@ exports.deleteSignature = async (req, res) => {
         }
 
         await signature.deleteOne();
+        emitDocumentUpdate(signature.document._id, { type: 'SIGNATURE_DELETED', signatureId: id });
         res.json({ message: 'Signature removed' });
     } catch (error) {
         console.error('Delete Signature Error:', error);

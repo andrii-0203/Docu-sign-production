@@ -73,7 +73,10 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
                         
                         {fileName ? (
                             <div className="animate-slide-up">
-                                <p className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-1">
+                                <p 
+                                    className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-1 truncate w-full max-w-[250px] mx-auto"
+                                    title={fileName}
+                                >
                                     {fileName}
                                 </p>
                                 <p className="text-xs text-green-600 dark:text-green-400 font-medium">Ready to upload</p>
