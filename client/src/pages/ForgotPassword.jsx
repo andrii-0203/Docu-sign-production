@@ -7,6 +7,7 @@ import { Mail, ArrowRight, ShieldCheck, ArrowLeft } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../services/api';
 import ThemeToggle from '../components/ThemeToggle';
+import Logo from '../components/ui/Logo';
 
 const schema = z.object({
     email: z.string().email("Please enter a valid email address"),
@@ -34,12 +35,12 @@ const ForgotPassword = () => {
 
             <div className="absolute top-0 w-full h-full bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-indigo-100/40 via-slate-50 to-slate-50 dark:from-indigo-950/40 dark:via-slate-950 dark:to-slate-950 pointer-events-none"></div>
 
-            <div className="relative bg-white dark:bg-slate-900 p-8 md:p-10 rounded-2xl shadow-[0_20px_50px_rgba(79,70,229,0.1)] dark:shadow-none w-full max-w-md border border-slate-100 dark:border-slate-800 animate-slide-up">
+            <div className="relative w-full max-w-md animate-slide-up">
                 <div className="flex justify-center mb-6">
-                    <div className="bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-2xl shadow-sm rotate-3">
-                        <Mail className="w-8 h-8 text-indigo-600 dark:text-indigo-400" />
-                    </div>
+                    <Logo size="lg" />
                 </div>
+
+                <div className="bg-white dark:bg-slate-900 p-8 md:p-10 rounded-2xl shadow-[0_20px_50px_rgba(79,70,229,0.1)] dark:shadow-none border border-slate-100 dark:border-slate-800">
                 
                 <div className="text-center mb-8">
                     <h2 className="text-2xl font-extrabold text-slate-800 dark:text-slate-100 tracking-tight">Forgot Password?</h2>
@@ -86,6 +87,7 @@ const ForgotPassword = () => {
                         Security link expires in 1 hour
                     </p>
                 </div>
+            </div>
             </div>
         </div>
     );

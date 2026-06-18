@@ -34,6 +34,8 @@ import toast from 'react-hot-toast';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 import ThemeToggle from '../components/ThemeToggle';
+import ConfirmDialog from '../components/ui/ConfirmDialog';
+import { PageLoader } from '../components/ui/LoadingSpinner';
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.min.mjs',
@@ -178,6 +180,8 @@ const DocumentView = () => {
     const [isFinalizing, setIsFinalizing] = useState(false);
     const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
     const [mobileTab, setMobileTab] = useState('signatories');
+    const [placementMode, setPlacementMode] = useState(false);
+    const [confirmAction, setConfirmAction] = useState(null);
     
     const fetchDocumentData = useCallback(async (currentWidth = pdfWidth) => {
         try {
@@ -233,16 +237,13 @@ const DocumentView = () => {
     useEffect(() => {
          if (!socket || !id) return;
 
-         console.log(`--- [DocumentView] Joining room: ${id}`);
          socket.emit('join-document', id);
 
-         socket.on('document-updated', (data) => {
-             console.log('--- Real-time: Document updated ---', data);
+         socket.on('document-updated', () => {
              fetchDocumentData();
          });
 
          return () => {
-             console.log(`--- [DocumentView] Leaving room: ${id}`);
              socket.emit('leave-document', id);
              socket.off('document-updated');
          };
@@ -440,7 +441,6 @@ const DocumentView = () => {
         if (document.status !== 'Pending') return;
         e.preventDefault();
         setIsDraggingOver(false);
-        console.log('Drop event captured at:', e.clientX, e.clientY);
         createSignatureAt(e.clientX, e.clientY);
     };
     
@@ -471,8 +471,8 @@ const DocumentView = () => {
         const loadToast = toast.loading('Finalizing document...');
         try {
             await api.post('/signatures/finalize', { documentId: id });
-            toast.success('Document finalized!', { id: loadToast });
-            window.location.reload();
+            toast.success('Document finalized successfully', { id: loadToast });
+            await fetchDocumentData();
         } catch (error) {
             console.error('Error finalizing:', error);
             toast.error(error.response?.data?.message || 'Failed to finalize document', { id: loadToast });
@@ -531,29 +531,73 @@ const DocumentView = () => {
         setIsShareModalOpen(true);
     };
 
-    const handleReject = async () => {
-        if (!window.confirm('Are you sure you want to reject this document?')) return;
-        try {
-            await api.post(`/docs/reject/${id}`);
-            setDocument(prev => ({ ...prev, status: 'Rejected' }));
-            fetchDocumentData();
-        } catch (error) {
-            console.error('Error rejecting:', error);
-            alert('Failed to reject document');
-        }
+    const handleReject = () => {
+        setConfirmAction({
+            title: 'Reject document',
+            message: 'This will mark the document as rejected. All parties will be notified. This action cannot be undone.',
+            variant: 'danger',
+            confirmLabel: 'Reject',
+            onConfirm: async () => {
+                try {
+                    await api.post(`/docs/reject/${id}`);
+                    setDocument((prev) => ({ ...prev, status: 'Rejected' }));
+                    fetchDocumentData();
+                    toast.success('Document rejected');
+                } catch (err) {
+                    toast.error('Failed to reject document');
+                } finally {
+                    setConfirmAction(null);
+                }
+            },
+        });
+    };
+
+    const handleClearSignatures = () => {
+        setConfirmAction({
+            title: 'Clear all signatures',
+            message: 'This will remove all signatures you have placed on this document. You can start over afterward.',
+            variant: 'danger',
+            confirmLabel: 'Clear all',
+            onConfirm: async () => {
+                try {
+                    await api.delete(`/signatures/all/${id}`);
+                    fetchDocumentData();
+                    toast.success('Signatures cleared');
+                } catch (err) {
+                    toast.error('Failed to clear signatures');
+                } finally {
+                    setConfirmAction(null);
+                }
+            },
+        });
     };
 
     if (error) {
         return (
-            <div className="min-h-screen bg-red-50 text-red-600 p-4 flex flex-col items-center justify-center">
-                <AlertCircle size={48} className="mb-4" />
-                <h2 className="text-xl font-bold mb-2">Error Loading Document</h2>
-                <p className="font-mono text-sm bg-red-100 p-3 rounded">{error}</p>
-                <button onClick={() => window.location.reload()} className="mt-6 px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-bold">
-                    Retry
-                </button>
+            <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center p-4">
+                <AlertCircle size={48} className="mb-4 text-red-500" />
+                <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 mb-2">Unable to load document</h2>
+                <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 text-center max-w-md">{error}</p>
+                <div className="flex gap-3">
+                    <button
+                        onClick={() => navigate('/dashboard')}
+                        className="px-5 py-2.5 text-sm font-semibold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 rounded-xl transition-colors"
+                    >
+                        Back to documents
+                    </button>
+                    <button
+                        onClick={() => { setError(null); fetchDocumentData(); }}
+                        className="px-5 py-2.5 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-colors"
+                    >
+                        Try again
+                    </button>
+                </div>
             </div>
         );
+    }
+
+    if (loading && !document) {
+        return <PageLoader label="Loading document..." />;
     }
 
     const handleResize = async (id, newWidth, newHeight) => {
@@ -579,18 +623,23 @@ const DocumentView = () => {
         }
     };
 
-    if (!document) return (
-        <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center gap-4">
-            <Loader2 className="animate-spin text-indigo-600" size={48} />
-            <p className="text-slate-500 font-medium">Loading Document...</p>
-        </div>
-    );
+    if (!document) return null;
 
 
 
     return (
         <div className="h-screen bg-slate-50 dark:bg-slate-950 font-sans flex flex-col transition-colors duration-300">
-            <SignatureModal 
+            <ConfirmDialog
+                isOpen={!!confirmAction}
+                title={confirmAction?.title}
+                message={confirmAction?.message}
+                variant={confirmAction?.variant}
+                confirmLabel={confirmAction?.confirmLabel}
+                onConfirm={confirmAction?.onConfirm}
+                onCancel={() => setConfirmAction(null)}
+            />
+
+            <SignatureModal
                 isOpen={isModalOpen} 
                 onClose={() => setIsModalOpen(false)} 
                 onSave={handleSaveSignature}
@@ -610,9 +659,9 @@ const DocumentView = () => {
             <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-sm z-30 p-2 md:p-4 flex justify-between items-center shrink-0 sticky top-0 transition-colors duration-300">
                 <div className="flex items-center gap-1 md:gap-3 min-w-0">
                     <button 
-                        onClick={() => window.location.href = '/dashboard'}
+                        onClick={() => navigate('/dashboard')}
                         className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 shrink-0"
-                        title="Back to Dashboard"
+                        title="Back to documents"
                     >
                         <ArrowLeft size={20} />
                     </button>
@@ -653,11 +702,23 @@ const DocumentView = () => {
                                     <div 
                                         draggable
                                         onDragStart={handleDragStartSource}
-                                        className="hidden md:flex items-center cursor-move bg-indigo-50 text-indigo-700 px-3 py-2 rounded-lg border border-indigo-200 hover:bg-indigo-100 transition-colors text-sm font-bold select-none"
+                                        className="hidden md:flex items-center cursor-move bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 px-3 py-2 rounded-lg border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 transition-colors text-sm font-semibold select-none"
                                         title="Drag to place signature"
                                     >
-                                        <PenTool size={14} className="mr-2" /> Drag Signature
+                                        <PenTool size={14} className="mr-2" /> Drag to sign
                                     </div>
+                                    <button
+                                        onClick={() => setPlacementMode((prev) => !prev)}
+                                        className={`hidden md:flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-semibold transition-colors ${
+                                            placementMode
+                                                ? 'bg-indigo-600 text-white border-indigo-600'
+                                                : 'bg-white dark:bg-slate-800 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-50 dark:hover:bg-indigo-900/20'
+                                        }`}
+                                        title="Toggle click-to-place mode"
+                                    >
+                                        <PenTool size={14} />
+                                        {placementMode ? 'Placement on' : 'Place signature'}
+                                    </button>
                                     <button 
                                         onClick={() => {
                                             // Place signature in center of visible view for mobile
@@ -671,11 +732,7 @@ const DocumentView = () => {
                                                 
                                                 // Ensure placement starts within bounds
                                                 createSignatureAt(centerX, centerY);
-                                                
-                                                toast.success('Signature added! Drag to position.', {
-                                                    icon: '👆',
-                                                    duration: 3000
-                                                });
+                                                toast.success('Signature placed — drag to reposition');
                                             }
                                         }}
                                         className="md:hidden p-2 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors border border-indigo-200 active:scale-95"
@@ -711,17 +768,15 @@ const DocumentView = () => {
                                 </>
                             ) : (
                                 <div className="flex flex-col items-end">
-                                    {/* Desktop Full Badge */}
-                                    <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-amber-50 text-amber-600 rounded-lg border border-amber-100 text-[11px] font-bold">
+                                    <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 rounded-lg border border-amber-100 dark:border-amber-800 text-[11px] font-semibold">
                                         <Clock size={14} className="animate-pulse" />
-                                        <span>GUEST SESSION ACTIVE</span>
+                                        <span>Guest signing in progress</span>
                                     </div>
-                                    <span className="hidden md:block text-[9px] text-slate-400 mt-1 mr-1">Owner actions locked until guest signs</span>
-                                    
-                                    {/* Mobile Compact Badge */}
-                                    <div className="md:hidden flex items-center gap-1.5 px-2 py-1 bg-amber-50 text-amber-600 rounded-lg border border-amber-100 text-[10px] font-bold">
+                                    <span className="hidden md:block text-[9px] text-slate-400 dark:text-slate-500 mt-1 mr-1">Owner actions paused until guest completes</span>
+
+                                    <div className="md:hidden flex items-center gap-1.5 px-2 py-1 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 rounded-lg border border-amber-100 dark:border-amber-800 text-[10px] font-semibold">
                                          <Clock size={12} className="animate-pulse" />
-                                         <span>Guest Active</span>
+                                         <span>Guest signing</span>
                                     </div>
                                 </div>
                             )}
@@ -750,20 +805,12 @@ const DocumentView = () => {
                     
                     {document.status === 'Pending' && signatures.length > 0 && !activeInvitation && (
                         <button 
-                            onClick={async (e) => {
+                            onClick={(e) => {
                                 e.stopPropagation();
-                                if (window.confirm('Delete all your signatures and start over?')) {
-                                    try {
-                                        await api.delete(`/signatures/all/${id}`);
-                                        fetchDocumentData();
-                                    } catch (e) {
-                                        console.error(e);
-                                        toast.error('Failed to clear signatures');
-                                    }
-                                }
+                                handleClearSignatures();
                             }}
-                            className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors border border-red-100 md:hidden"
-                            title="Clear All Signatures"
+                            className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors border border-red-100 dark:border-red-900/30 md:hidden"
+                            title="Clear all signatures"
                         >
                             <Trash2 size={20} />
                         </button>
@@ -810,16 +857,16 @@ const DocumentView = () => {
 
                                 <div 
                                     className={`absolute inset-0 z-[45] transition-all duration-300 pointer-events-auto ${
-                                        document.status === 'Pending' && !activeInvitation
+                                        document.status === 'Pending' && !activeInvitation && placementMode
                                         ? `cursor-crosshair ${isDraggingOver ? 'bg-indigo-500/20 ring-4 ring-indigo-500/50 ring-inset' : 'hover:bg-indigo-500/5'}` 
-                                        : 'cursor-not-allowed opacity-0'
+                                        : 'cursor-default'
                                     }`}
                                     onDragOver={handleDragOver}
                                     onDragEnter={() => document.status === 'Pending' && setIsDraggingOver(true)}
                                     onDragLeave={() => setIsDraggingOver(false)}
                                     onDrop={handleDrop}
                                     onClick={(e) => {
-                                        if (document.status === 'Pending' && !isModalOpen) {
+                                        if (document.status === 'Pending' && !isModalOpen && placementMode) {
                                             createSignatureAt(e.clientX, e.clientY);
                                         }
                                     }}
@@ -850,20 +897,11 @@ const DocumentView = () => {
 
                         {document.status === 'Pending' && signatures.length > 0 && !activeInvitation && (
                             <button 
-                                onClick={async (e) => {
+                                onClick={(e) => {
                                     e.stopPropagation();
-                                    if (window.confirm('Delete all your signatures and start over?')) {
-                                        try {
-                                            await api.delete(`/signatures/all/${id}`);
-                                            setSignatures([]);
-                                            fetchAuditLogs();
-                                        } catch (e) {
-                                            console.error(e);
-                                            toast.error('Failed to clear signatures');
-                                        }
-                                    }
+                                    handleClearSignatures();
                                 }}
-                                className="absolute top-4 right-4 z-[60] flex items-center gap-2 px-3 py-2 bg-white/90 backdrop-blur-sm border-2 border-red-500 text-red-600 rounded-xl hover:bg-red-500 hover:text-white transition-all font-bold shadow-lg dark:shadow-none text-xs uppercase tracking-wider"
+                                className="absolute top-4 right-4 z-[60] flex items-center gap-2 px-3 py-2 bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm border-2 border-red-500 text-red-600 rounded-xl hover:bg-red-500 hover:text-white transition-all font-semibold shadow-lg dark:shadow-none text-xs uppercase tracking-wider"
                             >
                                 <X size={14} strokeWidth={3} /> Clear All
                             </button>
@@ -877,36 +915,35 @@ const DocumentView = () => {
                 />
 
                 <div className={`
-                    bg-white border-t lg:border-t-0 lg:border-l border-slate-200 flex flex-col shadow-[-4px_0_20px_rgba(0,0,0,0.02)] z-[110] lg:z-20 shrink-0 
+                    bg-white dark:bg-slate-900 border-t lg:border-t-0 lg:border-l border-slate-200 dark:border-slate-800 flex flex-col shadow-[-4px_0_20px_rgba(0,0,0,0.02)] z-[110] lg:z-20 shrink-0 
                     fixed lg:relative inset-y-0 right-0 w-[85%] sm:w-80 lg:w-80 h-full 
                     transition-transform duration-300 ease-in-out
                     ${isMobileSidebarOpen ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'}
                 `}>
-                    {/* Mobile Header for Sidebar */}
-                    <div className="lg:hidden px-4 py-4 border-b border-slate-100 flex items-center justify-between">
-                        <div className="flex bg-slate-100 p-1 rounded-lg w-full">
+                    <div className="lg:hidden px-4 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                        <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg w-full">
                             <button 
                                 onClick={() => setMobileTab('signatories')}
-                                className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${mobileTab === 'signatories' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}
+                                className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-all ${mobileTab === 'signatories' ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}
                             >
                                 Signatories
                             </button>
                             <button 
                                 onClick={() => setMobileTab('audit')}
-                                className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${mobileTab === 'audit' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}
+                                className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-all ${mobileTab === 'audit' ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}
                             >
                                 Audit Trail
                             </button>
                         </div>
-                        <button onClick={() => setIsMobileSidebarOpen(false)} className="ml-4 p-2 text-slate-400 hover:text-slate-600">
+                        <button onClick={() => setIsMobileSidebarOpen(false)} className="ml-4 p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
                             <X size={20} />
                         </button>
                     </div>
                     {/* Signatory Status Section */}
-                    <div className={`flex flex-col border-b border-slate-100 overflow-hidden ${mobileTab !== 'signatories' && 'hidden lg:flex'}`}>
-                        <div className="bg-slate-50 border-b border-slate-100 px-4 py-3 flex items-center gap-2 sticky top-0 z-10">
+                    <div className={`flex flex-col border-b border-slate-100 dark:border-slate-800 overflow-hidden ${mobileTab !== 'signatories' && 'hidden lg:flex'}`}>
+                        <div className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800 px-4 py-3 flex items-center gap-2 sticky top-0 z-10">
                             <UserPlus size={16} className="text-slate-400" />
-                            <h2 className="font-bold text-slate-700 text-xs uppercase tracking-wide">Signatory Status</h2>
+                            <h2 className="font-semibold text-slate-700 dark:text-slate-300 text-xs uppercase tracking-wide">Signatory Status</h2>
                         </div>
                         <div className="flex-1 overflow-y-auto p-4 space-y-3">
                             {!document.invitations || document.invitations.length === 0 ? (
@@ -962,16 +999,24 @@ const DocumentView = () => {
                                                             </button>
                                                         )}
                                                         <button 
-                                                            onClick={async () => {
-                                                                if (!window.confirm(`Revoke invitation for ${inv.name}?`)) return;
-                                                                try {
-                                                                    await api.delete(`/docs/invite/${inv._id}`);
-                                                                    toast.success('Invitation revoked');
-                                                                    fetchDoc();
-                                                                } catch (err) {
-                                                                    console.error(err);
-                                                                    toast.error('Failed to revoke invitation');
-                                                                }
+                                                            onClick={() => {
+                                                                setConfirmAction({
+                                                                    title: 'Revoke invitation',
+                                                                    message: `Revoke the signing invitation for ${inv.name}? They will no longer be able to access this document.`,
+                                                                    variant: 'danger',
+                                                                    confirmLabel: 'Revoke',
+                                                                    onConfirm: async () => {
+                                                                        try {
+                                                                            await api.delete(`/docs/invite/${inv._id}`);
+                                                                            toast.success('Invitation revoked');
+                                                                            fetchDocumentData();
+                                                                        } catch (err) {
+                                                                            toast.error('Failed to revoke invitation');
+                                                                        } finally {
+                                                                            setConfirmAction(null);
+                                                                        }
+                                                                    },
+                                                                });
                                                             }}
                                                             title="Revoke Invitation"
                                                             className="p-1.5 text-red-600 hover:bg-red-50 rounded-md transition-colors border border-red-100 bg-white"
@@ -990,9 +1035,9 @@ const DocumentView = () => {
 
                     {/* Audit Trail Section */}
                     <div className={`flex flex-col flex-1 overflow-hidden ${mobileTab !== 'audit' && 'hidden lg:flex'}`}>
-                        <div className="bg-slate-50 border-b border-slate-100 px-4 py-3 flex items-center gap-2 sticky top-0 z-10">
+                        <div className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800 px-4 py-3 flex items-center gap-2 sticky top-0 z-10">
                             <History size={16} className="text-slate-400" />
-                            <h2 className="font-bold text-slate-700 text-xs uppercase tracking-wide">Audit Trail</h2>
+                            <h2 className="font-semibold text-slate-700 dark:text-slate-300 text-xs uppercase tracking-wide">Audit Trail</h2>
                         </div>
                         <div className="flex-1 overflow-y-auto p-5 space-y-6">
                             {auditLogs.length === 0 ? (
@@ -1024,7 +1069,7 @@ const DocumentView = () => {
 
              {/* Footer / Pagination */}
             {numPages && (
-                 <div className="bg-white border-t border-slate-200 px-4 py-3 flex justify-center items-center gap-4 z-30 shrink-0">
+                 <div className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 px-4 py-3 flex justify-center items-center gap-4 z-30 shrink-0">
                     <button 
                         disabled={pageNumber <= 1} 
                         onClick={() => setPageNumber(p => p - 1)}

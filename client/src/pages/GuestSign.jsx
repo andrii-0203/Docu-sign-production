@@ -573,7 +573,7 @@ const GuestSign = () => {
                     <div className="mt-8 pt-8 border-t border-slate-100">
                         <p className="text-xs text-slate-400 font-medium flex items-center justify-center gap-2">
                             <Shield size={14} className="text-indigo-400" /> 
-                            Securely verified via Labmentix Project Audit Trail
+                            Securely verified with SecureSign audit trail
                         </p>
                     </div>
                 </div>
@@ -910,7 +910,7 @@ const GuestSign = () => {
             <footer className="bg-white border-t border-slate-100 px-6 py-3 flex items-center justify-between text-xs text-slate-400 font-medium">
                 <div className="flex items-center gap-1">
                     <Shield size={12} className="text-indigo-400" />
-                    Powered by Labmentix SecureSign
+                    Powered by SecureSign
                 </div>
                 <div className="flex items-center gap-2"><AlertCircle size={14} /> IP Tracked for Security</div>
             </footer>

@@ -20,7 +20,23 @@ function App() {
       <AuthProvider>
         <SocketProvider>
           <ThemeProvider>
-            <Toaster position="top-right" toastOptions={{ duration: 4000 }} />
+            <Toaster
+              position="top-right"
+              toastOptions={{
+                duration: 4000,
+                className: 'text-sm font-medium',
+                style: {
+                  background: 'var(--toast-bg, #fff)',
+                  color: 'var(--toast-color, #1e293b)',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '12px',
+                  padding: '12px 16px',
+                  boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)',
+                },
+                success: { iconTheme: { primary: '#4f46e5', secondary: '#fff' } },
+                error: { iconTheme: { primary: '#dc2626', secondary: '#fff' } },
+              }}
+            />
             <Routes>
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />

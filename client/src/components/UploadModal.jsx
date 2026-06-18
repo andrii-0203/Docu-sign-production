@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import api from '../services/api';
 import { X, UploadCloud, FileText, AlertCircle } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
     const { register, handleSubmit, reset, watch, formState: { errors } } = useForm();
@@ -23,13 +24,12 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
         setUploading(true);
         try {
             await api.post('/docs/upload', formData);
-            
+            toast.success('Document uploaded successfully');
             onUploadSuccess();
             reset();
             onClose();
         } catch (error) {
-            console.error('Full Upload Error Object:', error);
-            alert(`Upload failed: ${error.response?.data?.message || error.message}`);
+            toast.error(error.response?.data?.message || 'Upload failed. Please try again.');
         } finally {
             setUploading(false);
         }
